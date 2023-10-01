@@ -1,4 +1,5 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
@@ -20,6 +21,24 @@ const client = new MongoClient(uri, {
     }
 });
 
+const verifyJwt = (req, res, next) => {
+    // console.log('JWF Fucking Hitting');
+    // console.log(req.headers.authorization);
+    const authorization = req.headers.authorization;
+    if (!authorization) {
+        return res.status(401)({ error: true, message: "UnAuthorize" })
+    }
+    const token = authorization.split(' ')[1]
+    // console.log('Token Inside Verify Me', token);
+    jwt.verify(token, process.env.ACCES_TOKEN_KEY, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ error: true, message: "UnAuthorize" })
+        }
+        req.decoded = decoded;
+        next()
+    })
+}
+
 async function run() {
     try {
 
@@ -27,6 +46,25 @@ async function run() {
         const ServiceCollection = client.db('DoctorsCar').collection('services')
         const BookingCollection = client.db('DoctorsCar').collection('bookings')
 
+        // START JWT 
+
+        app.post('/jwt', (req, res) => {
+            const user = req.body;
+            console.log(user);
+            const token = jwt.sign(user, process.env.ACCES_TOKEN_KEY, {
+                expiresIn: '1h',
+            });
+            console.log(token);
+            res.send({ token })
+
+        })
+
+
+        // END JWT 
+
+
+
+        // START CLIENT SITE 
         // GET OPRATION 
         app.get('/services', async (req, res) => {
             const cursor = ServiceCollection.find()
@@ -53,8 +91,13 @@ async function run() {
 
         })
 
-        app.get('/bookings', async (req, res) => {
-            // console.log(req.query.email);
+        app.get('/bookings', verifyJwt, async (req, res) => {
+            const decoded = req.decoded
+            console.log('comeback after verify', decoded);
+            if (decoded.email !== req.query.email) {
+                return res.status(401).send({ eror: 1, message: 'Forbidden Access' })
+            }
+            console.log(req.headers.authorization);
             let query = {}
             if (req.query?.email) {
                 query = { email: req.query.email }
